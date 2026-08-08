@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "market_csv adapter configuration",
+  "type": "object",
+  "properties": {
+    "bars_path": {
+      "type": "string",
+      "description": "Directory or file of daily bars (unadjusted OHLCV)."
+    },
+    "corporate_actions_path": {
+      "type": "string",
+      "description": "Splits/dividends/spinoffs with ex/record/pay dates."
+    },
+    "delistings_path": {
+      "type": "string",
+      "description": "Delisting events with reason and last trade date."
+    }
+  },
+  "required": ["bars_path"],
+  "additionalProperties": false
+}

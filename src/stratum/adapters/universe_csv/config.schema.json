@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "universe_csv adapter configuration",
+  "type": "object",
+  "properties": {
+    "membership_path": {
+      "type": "string",
+      "description": "Effective-dated membership intervals: security, added_on, removed_on, announced_on. A flat current-constituents list is rejected."
+    },
+    "universe_id": {
+      "type": "string",
+      "description": "Identifier this membership history defines, e.g. sp1500_pit."
+    }
+  },
+  "required": ["membership_path", "universe_id"],
+  "additionalProperties": false
+}

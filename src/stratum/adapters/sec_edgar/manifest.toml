@@ -1,0 +1,16 @@
+# Manifest for the unimplemented SEC EDGAR adapter scaffold.
+[adapter]
+id             = "sec_edgar"
+family         = "source"
+version        = "0.1.0"
+schema_version = "1"
+isolation      = "inprocess"
+config_schema  = "config.schema.json"
+license_tag    = "sec-edgar-public"
+frequency      = "per-filing"
+
+[pit]
+# acceptance_datetime is EDGAR's official "available to public" stamp.
+knowledge_time_basis = "publication"
+supports_restatement = true          # 10-K/A etc. arrive as new vintages
+publication_lag_p50_s = 3888000      # ~45 days: period end -> filing acceptance

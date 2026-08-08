@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sec_edgar adapter configuration",
+  "type": "object",
+  "properties": {
+    "user_agent": {
+      "type": "string",
+      "description": "SEC-required identifying User-Agent (name + contact email)."
+    },
+    "forms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": ["10-K", "10-Q", "8-K"],
+      "description": "Form types to ingest (amendments of these are always included)."
+    },
+    "ciks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional CIK allowlist; omit for full coverage."
+    }
+  },
+  "required": ["user_agent"],
+  "additionalProperties": false
+}

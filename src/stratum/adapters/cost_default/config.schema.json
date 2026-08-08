@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cost_default adapter configuration",
+  "type": "object",
+  "properties": {
+    "commission_bps": { "type": "number", "minimum": 0, "default": 1.0 },
+    "impact_coefficient": {
+      "type": "number",
+      "minimum": 0,
+      "default": 1.0,
+      "description": "k in k*sigma*sqrt(order/ADV) slippage."
+    }
+  },
+  "additionalProperties": false
+}

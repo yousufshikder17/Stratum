@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "google_trends adapter configuration",
+  "type": "object",
+  "properties": {
+    "terms": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Search terms to track."
+    },
+    "geo": {
+      "type": "string",
+      "default": "",
+      "description": "Geo restriction (Trends geo code); empty = worldwide."
+    },
+    "cadence": {
+      "type": "string",
+      "enum": ["daily", "weekly"],
+      "default": "daily"
+    }
+  },
+  "required": ["terms"],
+  "additionalProperties": false
+}

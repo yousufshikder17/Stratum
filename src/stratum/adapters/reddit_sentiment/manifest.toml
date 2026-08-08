@@ -1,0 +1,16 @@
+# Adapter manifest (spec §3.1)
+[adapter]
+id             = "reddit_sentiment"
+family         = "source"            # source | market_data | universe | cost_model | output
+version        = "0.1.0"
+schema_version = "1"                 # common-signal-schema major version spoken
+isolation      = "inprocess"         # inprocess | subprocess
+config_schema  = "config.schema.json"
+license_tag    = "reddit-api-tos"    # provenance/terms tracked per observation
+frequency      = "intraday->daily"   # native cadence; researcher aggregates to bars
+
+[pit]
+# How this adapter establishes knowledge_time (spec §4.2).
+knowledge_time_basis = "ingestion"   # ingestion | publication | provider_vintage
+supports_restatement = false         # true for EDGAR amendments, Trends backfill
+publication_lag_p50_s = 0            # documented typical lag, for honest defaults

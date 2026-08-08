@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "reddit_sentiment adapter configuration",
+  "type": "object",
+  "properties": {
+    "subreddits": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Subreddits to monitor for ticker mentions."
+    },
+    "sentiment_model": {
+      "type": "object",
+      "properties": {
+        "model_id": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["model_id", "version"],
+      "description": "Pinned sentiment model; re-scoring is a new vintage."
+    },
+    "client_id_secret_key": {
+      "type": "string",
+      "description": "Secrets-provider key for Reddit API credentials (never inline)."
+    }
+  },
+  "required": ["subreddits", "sentiment_model"],
+  "additionalProperties": false
+}

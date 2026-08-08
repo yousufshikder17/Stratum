@@ -1,0 +1,16 @@
+# Adapter manifest (spec §3.1)
+[adapter]
+id             = "market_csv"
+family         = "market_data"
+version        = "0.1.0"
+schema_version = "1"
+isolation      = "inprocess"
+config_schema  = "config.schema.json"
+license_tag    = "user-supplied-csv"
+frequency      = "daily"
+
+[pit]
+# Daily bars are knowable at close/settlement — a real publication stamp.
+knowledge_time_basis = "publication"
+supports_restatement = false
+publication_lag_p50_s = 0

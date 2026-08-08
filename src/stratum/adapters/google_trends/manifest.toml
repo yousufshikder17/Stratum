@@ -1,0 +1,16 @@
+# Adapter manifest (spec §3.1). Trends PIT is genuinely hard (spec §9 risk 1):
+# every pull is a provider vintage; the guard requires vintage_id per row.
+[adapter]
+id             = "google_trends"
+family         = "source"
+version        = "0.1.0"
+schema_version = "1"
+isolation      = "inprocess"
+config_schema  = "config.schema.json"
+license_tag    = "google-trends-tos"
+frequency      = "daily/weekly"
+
+[pit]
+knowledge_time_basis = "provider_vintage"
+supports_restatement = true          # provider backfills silently -> new vintages
+publication_lag_p50_s = 86400

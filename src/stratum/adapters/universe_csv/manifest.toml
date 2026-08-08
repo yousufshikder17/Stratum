@@ -1,0 +1,15 @@
+# Manifest for the unimplemented historical-membership CSV adapter scaffold.
+[adapter]
+id             = "universe_csv"
+family         = "universe"
+version        = "0.1.0"
+schema_version = "1"
+isolation      = "inprocess"
+config_schema  = "config.schema.json"
+license_tag    = "user-supplied-csv"
+frequency      = "sparse"
+
+[pit]
+knowledge_time_basis = "publication"  # membership changes are announced events
+supports_restatement = true           # corrections append new vintages
+publication_lag_p50_s = 0
