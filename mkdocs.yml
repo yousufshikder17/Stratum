@@ -1,0 +1,20 @@
+site_name: Stratum
+site_description: >
+  Point-in-time-correct alt-data research infrastructure. Research tooling,
+  not investment advice.
+repo_name: stratum
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle: { icon: material/brightness-7, name: Dark mode }
+    - scheme: slate
+      toggle: { icon: material/brightness-4, name: Light mode }
+nav:
+  - Home: index.md
+  - Authoring an adapter: adapter-authoring.md
+  - Authoring a factor: factor-authoring.md
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - tables

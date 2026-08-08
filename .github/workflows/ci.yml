@@ -1,0 +1,60 @@
+# CI for the implemented scaffold: lint, formatting, strict types, tests, and
+# structural bias-guard checks. It does not yet validate an operational store,
+# factor engine, backtest engine, leakage suite, or Ledger integration.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      # knowledge_time vs event_time is a type-level invariant; mypy strict
+      # is therefore a correctness gate here, not a style gate.
+      - run: uv run mypy
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - run: uv run pytest -q
+
+  bias-gate:
+    name: bias-gate (PIT / survivorship / honesty invariants)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run pytest tests/bias_gate -q

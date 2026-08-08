@@ -1,0 +1,46 @@
+# Backtest diagnostics — {{ report.factor_id }} v{{ report.factor_version }}
+
+> **Scope:** research diagnostics for a hypothesis, evaluated point-in-time
+> with bias controls. This report makes no forward-looking claim of any kind.
+{% if report.scorecard.gross_illustrative %}
+> **GROSS / ILLUSTRATIVE:** transaction costs were disabled for this run.
+> Nothing below represents net results.
+{% endif %}
+
+## Bias scorecard (required)
+
+| Guard | Status |
+|---|---|
+| Point-in-time universe used | {{ "PASS" if report.scorecard.pit_universe_used else "FAIL" }} |
+| Transaction costs applied | {{ "PASS" if report.scorecard.costs_enabled else "FAIL (gross/illustrative)" }} |
+| No whole-sample normalization | {{ "PASS" if report.scorecard.no_whole_sample_normalization else "FAIL" }} |
+| Delisting handling on | {{ "PASS" if report.scorecard.delisting_handling_on else "FAIL" }} |
+| Leakage suite passed | {{ "PASS" if report.scorecard.leakage_suite_passed else "FAIL" }} |
+
+## Diagnostics
+
+Baseline for comparison: **{{ report.baseline or "none declared" }}**
+
+{% for name, value in report.metrics.items() -%}
+- **{{ name }}**: {{ value }}
+{% endfor %}
+
+## Reproducibility stamp
+
+| | |
+|---|---|
+| Snapshot | `{{ report.stamp.snapshot_hash }}` |
+| Factor definition | `{{ report.stamp.factor_def_hash }}` |
+| Universe | `{{ report.stamp.universe_id }}` |
+| Cost model | `{{ report.stamp.cost_model_id }}` |
+| Seed | `{{ report.stamp.seed }}` |
+| Code version | `{{ report.stamp.code_version }}` |
+
+These fields identify the inputs required for reproduction. End-to-end
+reproduction is not implemented yet.
+
+## Caveats
+
+{% for caveat in report.caveats -%}
+- {{ caveat }}
+{% endfor %}
