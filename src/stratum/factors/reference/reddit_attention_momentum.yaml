@@ -1,0 +1,34 @@
+# Reference factor. Research hypothesis only — not a return claim.
+factor:
+  id: reddit_attention_momentum
+  version: 0.2.0
+  family: sentiment          # momentum | value | quality | sentiment | custom
+  description: >
+    Cross-sectional rank of 5d change in Reddit mention velocity,
+    neutralized by sector. Research hypothesis only — not a return claim.
+  baseline: price_momentum_12_1
+
+inputs:
+  - signal: social.attention
+    field: velocity
+    window: 5d
+    min_coverage: 50          # require >=50 mentions/day to count
+  - market: market.bar        # for universe & neutralization
+
+pit:
+  as_of_rule: knowledge_time   # selection axis (enforced; only legal value)
+  embargo: 1d                  # don't use a signal until 1 trading day after known
+
+transform:
+  - op: pct_change
+    window: 5d
+  - op: winsorize
+    limits: [0.01, 0.99]
+  - op: sector_neutralize
+  - op: cross_sectional_rank
+  - op: zscore
+
+evaluation:
+  rebalance: weekly
+  horizon: [1d, 5d, 21d]
+  metrics: [ic, rank_ic, turnover, decay, coverage]
