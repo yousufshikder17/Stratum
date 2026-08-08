@@ -1,0 +1,111 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stratum"
+version = "0.1.0.dev0"
+description = "Pre-alpha types and interfaces for point-in-time data and signal research."
+readme = "README.md"
+requires-python = ">=3.12"
+license-files = []
+keywords = [
+  "quant-research",
+  "point-in-time",
+  "bitemporal",
+  "backtesting",
+  "alternative-data",
+  "factors",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Financial and Insurance Industry",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+]
+dependencies = [
+  "duckdb>=1.0",
+  "pyarrow>=16",
+  "pandas>=2.2",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "typer>=0.12",
+  "jinja2>=3.1",
+  "pyyaml>=6.0",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Source-specific SDKs stay out of core; adapter packages import them lazily.
+reddit = ["asyncpraw>=7.7"]
+trends = ["pytrends>=4.9"]
+polars = ["polars>=1.0"]
+all = ["stratum[reddit,trends,polars]"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "mypy>=1.10",
+  "ruff>=0.5",
+  "types-PyYAML",
+  "mkdocs-material>=9.5",
+]
+
+[project.scripts]
+stratum = "stratum.cli:main"
+
+# Any pip-installable package can ship an adapter by registering in this group.
+# Bundled adapters use the same discovery mechanism.
+[project.entry-points."stratum.adapters"]
+reddit_sentiment = "stratum.adapters.reddit_sentiment:RedditSentimentAdapter"
+sec_edgar = "stratum.adapters.sec_edgar:SecEdgarAdapter"
+google_trends = "stratum.adapters.google_trends:GoogleTrendsAdapter"
+market_csv = "stratum.adapters.market_csv:CsvMarketDataAdapter"
+universe_csv = "stratum.adapters.universe_csv:CsvUniverseAdapter"
+cost_default = "stratum.adapters.cost_default:DefaultCostModelAdapter"
+parquet_panel = "stratum.adapters.parquet_panel:ParquetPanelExporter"
+
+# Factor packs register a module that
+# exposes FACTOR_DIR, a directory of declarative YAML factor definitions.
+[project.entry-points."stratum.factors"]
+stratum_reference = "stratum.factors.reference"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stratum"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+  "README.md",
+  "docs",
+  "factors",
+  "mkdocs.yml",
+  "pyproject.toml",
+  "src",
+  "tests",
+  "uv.lock",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/stratum/cli/__init__.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
