@@ -37,6 +37,9 @@ class StoreError(RuntimeError):
 @dataclass(frozen=True, kw_only=True, slots=True)
 class WriteReceipt:
     rows_written: int
+    #: Idempotent re-pulls: identical rows already present (sibling parity —
+    #: Ledger's WriteReceipt carries the same field).
+    rows_skipped: int = 0
     run_id: str
 
 
