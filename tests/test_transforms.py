@@ -1,6 +1,5 @@
 """Standard transforms: one cross-section per call, PIT-safe (spec §5.4)."""
 
-import math
 
 import pytest
 
