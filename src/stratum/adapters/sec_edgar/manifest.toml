@@ -8,6 +8,7 @@ isolation      = "inprocess"
 config_schema  = "config.schema.json"
 license_tag    = "sec-edgar-public"
 frequency      = "per-filing"
+network        = true               # core must supply a rate limiter
 
 [pit]
 # acceptance_datetime is EDGAR's official "available to public" stamp.

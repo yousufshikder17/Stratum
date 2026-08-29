@@ -5,15 +5,26 @@ backtest / report / snapshot``. Ingestion may touch the network; research
 commands read only from the immutable PIT store snapshot named in the run
 manifest — the structural guarantee that a backtest cannot accidentally fetch
 future data (spec §2.4).
+
+``ingest``, ``store``, ``snapshot``, ``factor --validate-only``, and
+``adapters`` are implemented. ``backtest`` and ``report`` are still scaffolds:
+the bias-controlled simulation loop (spec §6) is the next build step and
+exiting 2 is a more honest answer than a plausible-looking number.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
 from stratum import __version__
+
+if TYPE_CHECKING:
+    from stratum.adapters.context import AdapterContext
+    from stratum.config import ResearchConfig
 
 app = typer.Typer(
     name="stratum",
@@ -28,13 +39,35 @@ app = typer.Typer(
 _NOT_IMPLEMENTED = "Scaffold: this command is not implemented."
 
 
-@app.callback()
-def _main(
-    version: bool = typer.Option(False, "--version", help="Print version and exit."),
-) -> None:
-    if version:
+def _parse_as_of(text: str) -> datetime:
+    try:
+        stamp = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise typer.BadParameter(f"{text!r} is not an ISO timestamp") from exc
+    # A naive as_of is ambiguous, and an ambiguous knowledge cut is a silent
+    # off-by-hours leak. Assume UTC explicitly and say so, rather than guess.
+    return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=UTC)
+
+
+def _version_callback(value: bool) -> None:
+    """Eager, so ``stratum --version`` answers before Click's group insists on
+    a subcommand (``no_args_is_help`` would otherwise turn it into an error)."""
+    if value:
         typer.echo(f"stratum {__version__}")
         raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Print version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    return None
 
 
 @app.command()
@@ -43,18 +76,40 @@ def ingest(
     adapter: str | None = typer.Option(None, help="Restrict to one adapter id."),
     backfill: bool = typer.Option(False, help="Historical backfill instead of forward poll."),
 ) -> None:
-    """Scaffold for planned guarded ingestion; not implemented."""
-    typer.echo(_NOT_IMPLEMENTED)
-    raise typer.Exit(code=2)
+    """Run configured adapters through the guarded path into the PIT store.
+
+    Exits non-zero if the leakage guard rejected anything, so a CI job cannot
+    treat a partially-rejected ingest as a success.
+    """
+    from stratum.config import ResearchConfig
+    from stratum.guard.leakage import IngestMode
+    from stratum.run.ingest import format_report, run_ingest
+
+    research = ResearchConfig.load(config)
+    mode = IngestMode.BACKFILL if backfill else IngestMode.POLL
+    report = run_ingest(research, mode=mode, only=adapter)
+    for line in format_report(report):
+        typer.echo(line)
+    if not report.clean:
+        raise typer.Exit(code=1)
 
 
 @app.command()
 def store(
     config: Path = typer.Option(..., "--config"),
 ) -> None:
-    """Scaffold for planned store inspection; not implemented."""
-    typer.echo(_NOT_IMPLEMENTED)
-    raise typer.Exit(code=2)
+    """Summarize the PIT store: rows, entities, axis spans, resolution coverage."""
+    from stratum.config import ResearchConfig
+    from stratum.store.duckdb_store import DuckDBSignalStore
+    from stratum.store.inspect import summarize
+
+    research = ResearchConfig.load(config)
+    signal_store = DuckDBSignalStore(research.store_path)
+    try:
+        for line in summarize(signal_store).lines():
+            typer.echo(line)
+    finally:
+        signal_store.close()
 
 
 @app.command()
@@ -100,11 +155,108 @@ def report(
 def snapshot(
     config: Path = typer.Option(..., "--config"),
     as_of: str = typer.Option(..., "--as-of", help="Knowledge-axis timestamp (ISO, UTC)."),
+    out: Path | None = typer.Option(None, "--out", help="Snapshot directory."),
     push: str | None = typer.Option(None, "--push", help="Endpoint to push the snapshot to."),
 ) -> None:
-    """Scaffold for planned snapshot materialization; not implemented."""
-    typer.echo(_NOT_IMPLEMENTED)
-    raise typer.Exit(code=2)
+    """Materialize a content-addressed snapshot of the store at ``--as-of``."""
+    from stratum.config import ResearchConfig
+    from stratum.run.snapshot import create_snapshot, push_snapshot
+    from stratum.schema.times import AsOf
+    from stratum.store.duckdb_store import DuckDBSignalStore
+
+    research = ResearchConfig.load(config)
+    scope = AsOf.at(_parse_as_of(as_of))
+    target = out or research.store_path.parent / "snapshots" / as_of.replace(":", "")
+    signal_store = DuckDBSignalStore(research.store_path)
+    try:
+        ref = create_snapshot(signal_store, as_of=scope, target_dir=target)
+    finally:
+        signal_store.close()
+    typer.echo(f"snapshot {ref.content_hash}")
+    typer.echo(f"  as_of {scope.as_datetime().isoformat()}")
+    typer.echo(f"  path  {ref.path}")
+    if push is not None:
+        try:
+            push_snapshot(ref, endpoint=push)
+        except NotImplementedError as exc:
+            typer.echo(f"push unavailable: {exc}")
+            raise typer.Exit(code=2) from exc
+
+
+@app.command()
+def universe(
+    config: Path = typer.Option(..., "--config"),
+    as_of: str = typer.Option(..., "--as-of", help="Membership date (ISO, UTC)."),
+    universe_id: str = typer.Option(..., "--universe", help="Universe id, e.g. sp1500_pit."),
+) -> None:
+    """Print point-in-time index membership known as of a date.
+
+    The survivorship check you can run by hand: constituents include names
+    later delisted and exclude changes not yet announced (spec §6.3).
+    """
+    import asyncio
+
+    from stratum.adapters.base import UniverseSpec
+    from stratum.adapters.discovery import load_adapter
+    from stratum.config import ResearchConfig
+
+    research = ResearchConfig.load(config)
+    matching = [a for a in research.adapters if a.settings.get("universe_id") == universe_id]
+    if not matching:
+        typer.echo(f"no configured adapter serves universe {universe_id!r}")
+        raise typer.Exit(code=2)
+
+    adapter_config = matching[0]
+
+    async def _members() -> list[str]:
+        adapter = load_adapter(adapter_config.id)()
+        await adapter.configure(dict(adapter_config.settings), _read_only_context(research))
+        members = await adapter.members_as_of(  # type: ignore[attr-defined]
+            _parse_as_of(as_of).date(), UniverseSpec(id=universe_id)
+        )
+        await adapter.close()
+        return list(members)
+
+    members = asyncio.run(_members())
+    typer.echo(f"{universe_id} as of {as_of}: {len(members)} members")
+    for member in members:
+        typer.echo(f"  {member}")
+
+
+def _read_only_context(research: ResearchConfig) -> AdapterContext:
+    """Minimal context for a lookup that writes nothing.
+
+    ``members_as_of`` never reaches the sink, so this context deliberately
+    carries a sink that raises: a lookup path that started writing would be a
+    bug, and it should fail loudly rather than quietly bypass the guarded
+    writer.
+    """
+    import logging
+
+    from stratum.adapters.context import AdapterContext
+    from stratum.schema.observation import Observation
+
+    class _RefusingSink:
+        async def submit(self, observation: Observation) -> None:
+            raise RuntimeError("this context is read-only; ingestion must go through GuardedWriter")
+
+    class _NoLimit:
+        async def acquire(self, cost: int = 1) -> None:
+            return None
+
+    class _NoSecrets:
+        def get(self, key: str) -> str | None:
+            return None
+
+    return AdapterContext(
+        logger=logging.getLogger("stratum.cli.universe"),
+        clock=lambda: datetime.now(UTC),
+        data_dir=research.source.parent,
+        secrets=_NoSecrets(),
+        rate_limiter=_NoLimit(),
+        sink=_RefusingSink(),
+        run_id="cli-universe",
+    )
 
 
 @app.command()

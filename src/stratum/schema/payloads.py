@@ -47,6 +47,17 @@ class ModelRef:
     model_id: str
     version: str
 
+    @classmethod
+    def parse(cls, text: str) -> ModelRef:
+        """Inverse of :meth:`__str__` — reads the store's ``derived_by`` column."""
+        model_id, sep, version = text.partition("@")
+        if not sep:
+            raise ValueError(f"malformed model reference {text!r} (expected 'model_id@version')")
+        return cls(model_id=model_id, version=version)
+
+    def __str__(self) -> str:
+        return f"{self.model_id}@{self.version}"
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Payload:

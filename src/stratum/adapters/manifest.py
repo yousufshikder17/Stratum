@@ -82,6 +82,12 @@ class AdapterManifest:
     config_schema: str  # relative path to a JSON Schema file
     license_tag: str  # provenance/terms tracked per observation (spec §4.7)
     frequency: str  # native cadence, e.g. "intraday->daily"
+    #: Does this adapter reach a remote provider? Declared so the core can
+    #: refuse to run it without a configured rate limit (spec §3.2 rule 5) —
+    #: forgetting to throttle EDGAR should fail at startup, not at the
+    #: provider's discretion. Defaults false, so file-backed adapters and
+    #: existing manifests need no change.
+    network: bool = False
     pit: PitDeclaration
 
 
@@ -98,6 +104,7 @@ def parse_manifest(data: dict[str, Any], *, origin: str = "<memory>") -> Adapter
             config_schema=adapter["config_schema"],
             license_tag=adapter["license_tag"],
             frequency=adapter.get("frequency", ""),
+            network=bool(adapter.get("network", False)),
             pit=PitDeclaration(
                 knowledge_time_basis=KnowledgeTimeBasis(pit["knowledge_time_basis"]),
                 supports_restatement=bool(pit.get("supports_restatement", False)),

@@ -5,15 +5,34 @@
   "properties": {
     "bars_path": {
       "type": "string",
-      "description": "Directory or file of daily bars (unadjusted OHLCV)."
+      "description": "CSV of daily bars (unadjusted OHLCV): security, date, open, high, low, close, volume, optional vwap / adjustment_ref / knowledge_time."
     },
     "corporate_actions_path": {
       "type": "string",
-      "description": "Splits/dividends/spinoffs with ex/record/pay dates."
+      "description": "Splits/dividends/spinoffs: security, action_type, ex_date, announced_on, optional ratio / amount / record_date / pay_date."
     },
     "delistings_path": {
       "type": "string",
-      "description": "Delisting events with reason and last trade date."
+      "description": "Delisting events: security, reason, last_trade_date, announced_on, optional final_value_policy."
+    },
+    "session_close_utc": {
+      "type": "string",
+      "description": "When a daily bar becomes knowable, as an ISO time in UTC. Default 21:00.",
+      "default": "21:00"
+    },
+    "adjustment_ref": {
+      "type": "string",
+      "description": "Name of the as-of-date adjustment factor set these bars pair with."
+    },
+    "data_class": {
+      "type": "string",
+      "enum": ["public_agg", "public_text", "licensed"],
+      "description": "Export classification stamped on every row. Defaults to licensed.",
+      "default": "licensed"
+    },
+    "source_id": {
+      "type": "string",
+      "description": "Provider id recorded on every observation. Defaults to the adapter id."
     }
   },
   "required": ["bars_path"],

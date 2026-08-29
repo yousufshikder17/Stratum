@@ -8,7 +8,11 @@ fails it. This does not replace end-to-end storage or leakage-suite tests.
 
 from __future__ import annotations
 
+import ast
+import dataclasses
+import importlib
 import inspect
+import pathlib
 from datetime import UTC, date, datetime
 
 import pytest
@@ -134,3 +138,149 @@ def test_honest_framing_rejects_promise_language() -> None:
     with pytest.raises(HonestFramingError):
         assert_honest_framing("Expected return of 12% annualized.")
     assert_honest_framing("Rank-IC decayed from 0.03 (1d) to 0.01 (21d); turnover 40%/wk.")
+
+
+# -- the ingest path (added with MVP items 5 and 6) --------------------------
+
+
+def test_guarded_writer_is_the_only_sink_implementation_in_core() -> None:
+    """Adapters write through `AdapterContext.sink`. If core ever grows a
+    second `ObservationSink` that is not the guarded writer, that is a
+    guard bypass — this test is where it should fail."""
+    import pkgutil
+
+    import stratum
+    from stratum.adapters.context import ObservationSink
+    from stratum.guard.writer import GuardedWriter
+
+    implementations = []
+    for module_info in pkgutil.walk_packages(stratum.__path__, "stratum."):
+        module = importlib.import_module(module_info.name)
+        for obj in vars(module).values():
+            if (
+                isinstance(obj, type)
+                and obj.__module__.startswith("stratum.")
+                and obj is not ObservationSink
+                and hasattr(obj, "submit")
+                and callable(getattr(obj, "submit", None))
+            ):
+                implementations.append(obj)
+    assert set(implementations) == {GuardedWriter}, (
+        "core gained a write path that is not the guarded writer: "
+        f"{sorted(c.__qualname__ for c in implementations)}"
+    )
+
+
+def _ingest_source() -> str:
+    """The ingest runner's source, read from disk.
+
+    Two traps here, both of which make a naive version of this helper pass
+    while proving nothing. `inspect.getsource` reads linecache, which serves
+    whatever was cached at first import — so an absence-assertion can pass
+    against stale text. And ``import stratum.run.ingest as m`` binds the
+    re-exported *function* ``ingest``, not the module, because
+    ``stratum/run/__init__.py`` shadows the submodule name; ``m`` would then be
+    a function object that quietly satisfies "does not contain .write(".
+    """
+    module = importlib.import_module("stratum.run.ingest")
+    path = getattr(module, "__file__", None)
+    assert path is not None, "expected a module, got a shadowing re-export"
+    return pathlib.Path(path).read_text(encoding="utf-8")
+
+
+def test_ingest_never_touches_the_store_directly() -> None:
+    """The runner drives adapters and submits through the writer. A direct
+    `store.write(...)` in the ingest path would skip resolution and stamping
+    even though the guard's proof type would still be required."""
+    assert ".write(" not in _ingest_source()
+
+
+def test_entity_resolution_requires_an_as_of() -> None:
+    """Identity changes over time; a resolver without an as_of would merge two
+    issuers that happened to share a ticker (spec §4.5)."""
+    from stratum.resolver.entity import EntityResolver
+
+    sig = inspect.signature(EntityResolver.resolve)
+    as_of = sig.parameters["as_of"]
+    assert as_of.kind is inspect.Parameter.KEYWORD_ONLY
+    assert as_of.default is inspect.Parameter.empty
+
+
+def test_universe_membership_requires_an_as_of() -> None:
+    """A "current constituents" lookup applied to history is survivorship bias
+    (spec §6.3, §9 risk 3)."""
+    from stratum.adapters.base import UniverseAdapter
+
+    sig = inspect.signature(UniverseAdapter.members_as_of)
+    assert "as_of" in sig.parameters
+    assert sig.parameters["as_of"].default is inspect.Parameter.empty
+
+
+def test_store_inspection_returns_no_observations() -> None:
+    """`stratum store` queries the physical table without an as_of. That is
+    only safe while every value it returns is an aggregate."""
+    from stratum.store.inspect import SignalSummary, StoreSummary, summarize
+
+    returned = inspect.signature(summarize).return_annotation
+    assert returned is StoreSummary or returned == "StoreSummary"
+    field_types = {
+        name: field.type
+        for name, field in {
+            **StoreSummary.__dataclass_fields__,
+            **SignalSummary.__dataclass_fields__,
+        }.items()
+    }
+    assert not any("Observation" in str(t) for t in field_types.values())
+
+
+def test_adapter_output_types_all_require_a_knowledge_stamp() -> None:
+    """Every record type an adapter can emit carries a required, default-less
+    `knowledge_time`. There is no constructor path to an unstamped record."""
+    from stratum.adapters.base import Bar, CorporateAction, DelistingEvent, SignalValue
+    from stratum.schema.times import KnowledgeTime
+
+    for record_type in (Bar, CorporateAction, DelistingEvent, SignalValue):
+        field = record_type.__dataclass_fields__["knowledge_time"]
+        assert field.default is dataclasses.MISSING, record_type.__name__
+        assert field.default_factory is dataclasses.MISSING, record_type.__name__
+        assert field.type in ("KnowledgeTime", KnowledgeTime), record_type.__name__
+
+
+def test_network_adapters_declare_themselves() -> None:
+    """`network = true` is what lets the core refuse to run a remote source
+    without a rate limit (spec §3.2 rule 5). A network adapter that forgets the
+    flag silently opts out of throttling."""
+    from stratum.adapters.discovery import discover
+
+    manifests = {d.name: d.manifest for d in discover() if d.manifest is not None}
+    remote = {"reddit_sentiment", "sec_edgar", "google_trends"}
+    for name, manifest in manifests.items():
+        assert manifest.network is (name in remote), name
+
+
+def test_the_writer_cannot_be_left_holding_rows() -> None:
+    """Batched writes mean the tail of a run is unwritten until `flush()`. The
+    ingest runner must call it from a `finally`, or a source that dies
+    mid-stream silently discards what it already produced.
+
+    Checked against the AST rather than the text, so a comment or a reflow
+    cannot break it and a `flush()` moved out of the `finally` cannot slip
+    past it.
+    """
+    tree = ast.parse(_ingest_source())
+    flushes_in_finally = [
+        node
+        for handler in ast.walk(tree)
+        if isinstance(handler, ast.Try)
+        for stmt in handler.finalbody
+        for node in ast.walk(stmt)
+        if isinstance(node, ast.Attribute) and node.attr == "flush"
+    ]
+    all_flushes = [
+        node for node in ast.walk(tree) if isinstance(node, ast.Attribute) and node.attr == "flush"
+    ]
+    assert all_flushes, "the ingest runner never flushes the write buffer"
+    assert len(flushes_in_finally) == len(all_flushes), (
+        "every writer.flush() must sit in a finally block, so a source that "
+        "raises mid-stream still persists what it produced"
+    )

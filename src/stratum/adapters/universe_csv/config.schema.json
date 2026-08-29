@@ -5,11 +5,15 @@
   "properties": {
     "membership_path": {
       "type": "string",
-      "description": "Effective-dated membership intervals: security, added_on, removed_on, announced_on. A flat current-constituents list is rejected."
+      "description": "Effective-dated membership intervals: security, added_on, announced_on, and removed_on with removed_announced_on for names that left. A flat current-constituents list is rejected."
     },
     "universe_id": {
       "type": "string",
       "description": "Identifier this membership history defines, e.g. sp1500_pit."
+    },
+    "source_id": {
+      "type": "string",
+      "description": "Provider id recorded on every observation. Defaults to the adapter id."
     }
   },
   "required": ["membership_path", "universe_id"],

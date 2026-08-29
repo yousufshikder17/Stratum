@@ -39,9 +39,7 @@ def attention(obs_id, sid, event_day, know_dt, velocity):
         vintage_id="v1",
         data_class=DataClass.PUBLIC_AGG,
         license_tag="test",
-        payload=SocialAttention(
-            mention_count=100, unique_authors=40, velocity=velocity
-        ),
+        payload=SocialAttention(mention_count=100, unique_authors=40, velocity=velocity),
     )
 
 

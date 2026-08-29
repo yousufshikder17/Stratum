@@ -36,6 +36,13 @@ snapshots/
 *.duckdb
 *.duckdb.wal
 
+# ...except the examples/ bundle, which is small synthetic fixture data and is
+# committed on purpose: it is how the pipeline is demonstrated, how the README
+# quickstart is verifiable, and what CI's smoke step runs. The store and
+# snapshots it generates stay ignored by the rules above.
+!examples/data/
+!examples/data/*.csv
+
 # Docs build
 site/
 

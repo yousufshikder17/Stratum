@@ -1,6 +1,5 @@
 """Standard transforms: one cross-section per call, PIT-safe (spec §5.4)."""
 
-
 import pytest
 
 from stratum.factors.transforms import get_op, registered_ops
@@ -78,9 +77,7 @@ def test_sector_neutralize_demeans_by_group_label():
 
 
 def test_sector_neutralize_excludes_unlabeled_entities():
-    out = get_op("sector_neutralize")(
-        xs(a=10.0, ghost=99.0), {"sectors": {"a": "tech"}}
-    )
+    out = get_op("sector_neutralize")(xs(a=10.0, ghost=99.0), {"sectors": {"a": "tech"}})
     assert set(out) == {"a"}
     assert out["a"] == pytest.approx(0.0)
 

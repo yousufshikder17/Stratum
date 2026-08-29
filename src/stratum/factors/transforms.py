@@ -119,16 +119,12 @@ def sector_neutralize(xs: Mapping[str, float], params: Mapping[str, Any]) -> Map
             counts[s] = counts.get(s, 0) + 1
     means = {s: sums[s] / counts[s] for s in sums}
     return {
-        entity: value - means[sectors[entity]]
-        for entity, value in xs.items()
-        if entity in sectors
+        entity: value - means[sectors[entity]] for entity, value in xs.items() if entity in sectors
     }
 
 
 @register_op("cross_sectional_rank")
-def cross_sectional_rank(
-    xs: Mapping[str, float], params: Mapping[str, Any]
-) -> Mapping[str, float]:
+def cross_sectional_rank(xs: Mapping[str, float], params: Mapping[str, Any]) -> Mapping[str, float]:
     """Fractional ranks in [0, 1] within this cross-section (average ties)."""
     entities = sorted(xs)
     n = len(entities)

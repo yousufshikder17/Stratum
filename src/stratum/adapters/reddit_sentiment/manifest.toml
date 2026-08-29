@@ -8,6 +8,7 @@ isolation      = "inprocess"         # inprocess | subprocess
 config_schema  = "config.schema.json"
 license_tag    = "reddit-api-tos"    # provenance/terms tracked per observation
 frequency      = "intraday->daily"   # native cadence; researcher aggregates to bars
+network        = true               # core must supply a rate limiter
 
 [pit]
 # How this adapter establishes knowledge_time (spec §4.2).

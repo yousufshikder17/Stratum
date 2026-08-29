@@ -1,8 +1,11 @@
-"""Shared fixtures: observation factory + manifest factory."""
+"""Shared fixtures: observation factory, manifest factory, CSV writer."""
 
 from __future__ import annotations
 
+import csv
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -69,3 +72,14 @@ def make_manifest(
 @pytest.fixture
 def observation() -> Observation:
     return make_observation()
+
+
+def write_csv(path: Path, header: Sequence[str], rows: Sequence[Sequence[object]]) -> Path:
+    """Write a fixture CSV. Adapters are only as correct as the files they
+    refuse, so tests write real files rather than mocking the reader."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(header)
+        writer.writerows(rows)
+    return path

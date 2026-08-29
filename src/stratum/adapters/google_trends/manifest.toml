@@ -9,6 +9,7 @@ isolation      = "inprocess"
 config_schema  = "config.schema.json"
 license_tag    = "google-trends-tos"
 frequency      = "daily/weekly"
+network        = true               # core must supply a rate limiter
 
 [pit]
 knowledge_time_basis = "provider_vintage"

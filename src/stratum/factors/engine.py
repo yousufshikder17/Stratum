@@ -119,9 +119,7 @@ class FactorEngine:
 
     # -- evaluation ------------------------------------------------------------
 
-    def build(
-        self, definition: FactorDefinition, *, rebalance_dates: list[date]
-    ) -> ExposurePanel:
+    def build(self, definition: FactorDefinition, *, rebalance_dates: list[date]) -> ExposurePanel:
         """Cross-sectional exposures per rebalance date, PIT-safe end to end."""
         embargo = _embargo_delta(definition.pit.embargo)
         needs_base = any(step.op == "pct_change" for step in definition.transform)
@@ -155,7 +153,9 @@ class FactorEngine:
                 exposures[t] = {}
                 coverage[t] = 0
                 continue
-            xs = {sid: columns[0][sid] for sid in sorted(entities)}
+            # A Mapping, not a dict: transforms return new mappings and
+            # nothing here mutates the cross-section in place.
+            xs: Mapping[str, float] = {sid: columns[0][sid] for sid in sorted(entities)}
 
             for step in definition.transform:
                 params: dict[str, Any] = dict(step.params)
@@ -170,7 +170,7 @@ class FactorEngine:
                     params["sectors"] = sector_labels
                 xs = get_op(step.op)(xs, params)
 
-            exposures[t] = xs
+            exposures[t] = dict(xs)
             coverage[t] = len(xs)
 
         definition_bytes = json.dumps(asdict(definition), sort_keys=True, default=str)
