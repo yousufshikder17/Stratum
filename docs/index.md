@@ -1,10 +1,11 @@
 # Stratum
 
 Pre-alpha research tooling for a common **point-in-time signal schema**,
-adapter contracts, leakage validation, and declarative factor definitions.
-Storage, ingestion, factor computation, backtesting, snapshots, and the
-leakage suite are currently interfaces or scaffolds rather than working
-pipelines.
+adapter contracts, leakage validation, and declarative factors. Guarded
+ingestion, the bitemporal store, entity resolution, survivorship-correct
+universes, factor construction, and content-addressed snapshots work today.
+The backtest engine, the leakage suite, and the three network source adapters
+are still scaffolds.
 
 !!! warning "Scope (binding, not boilerplate)"
     Stratum is *research infrastructure*, not a prediction or trading
@@ -23,18 +24,26 @@ Every observation carries two clocks:
 
 The two are distinct Python types that cannot be compared directly;
 `Observation` (a.k.a. `PointInTimeRecord`) cannot be constructed without a
-`knowledge_time`. The store interface requires guarded writes and an `as_of`
-scope for reads. The DuckDB implementation is not complete, so persistence
-and as-of query guarantees are not yet available.
+`knowledge_time`. The store accepts only the leakage guard's proof type on
+write and requires an `as_of` on every read — there is no unscoped read and no
+unguarded write.
 
 ## Ledger
 
-Ledger is an intentional sibling project. Stratum is the point-in-time data
-and signal foundation that Ledger can consume through adapter interfaces.
-No local Ledger checkout or private repository is required by this project,
-and no public Ledger URL is assumed.
+Ledger is an intentional sibling project: Stratum ingests and validates at
+origin, Ledger backtests and scores. They share no code — only a column
+contract on the two clocks — and neither needs a checkout of the other to
+build or test. See [the Ledger handoff](ledger-handoff.md).
 
 ## Start here
 
 - [Authoring an adapter](adapter-authoring.md) — connect a new source.
 - [Authoring a factor](factor-authoring.md) — define a factor in YAML.
+- [The Ledger handoff](ledger-handoff.md) — the sibling data contract.
+
+Or run the pipeline over the synthetic `examples/` bundle:
+
+```bash
+uv run stratum ingest   --config examples/research.toml --backfill
+uv run stratum universe --config examples/research.toml     --universe sp1500_pit --as-of 2024-02-01
+```

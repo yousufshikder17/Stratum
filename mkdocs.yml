@@ -14,6 +14,7 @@ nav:
   - Home: index.md
   - Authoring an adapter: adapter-authoring.md
   - Authoring a factor: factor-authoring.md
+  - The Ledger handoff: ledger-handoff.md
 markdown_extensions:
   - admonition
   - pymdownx.superfences

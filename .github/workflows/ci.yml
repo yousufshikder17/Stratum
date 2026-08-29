@@ -1,6 +1,7 @@
-# CI for the implemented scaffold: lint, formatting, strict types, tests, and
-# structural bias-guard checks. It does not yet validate an operational store,
-# factor engine, backtest engine, leakage suite, or Ledger integration.
+# Lint, formatting, strict types, the test matrix, the structural bias-gate,
+# and an offline smoke run of the examples/ bundle. Not covered: the backtest
+# engine (unimplemented) and Ledger integration, which needs both repositories
+# checked out — see docs/ledger-handoff.md.
 name: ci
 
 on:
@@ -58,3 +59,31 @@ jobs:
           python-version: "3.12"
       - run: uv sync --locked
       - run: uv run pytest tests/bias_gate -q
+
+  smoke:
+    name: smoke (examples/ pipeline, offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      # The README's quickstart, run for real. `ingest` exits non-zero if the
+      # leakage guard rejected anything, so a silent regression in the guarded
+      # path fails here rather than in a reader's terminal.
+      - run: uv run stratum ingest --config examples/research.toml --backfill
+      - run: uv run stratum store --config examples/research.toml
+      - name: point-in-time universe is survivorship-correct
+        run: |
+          set -euo pipefail
+          before=$(uv run stratum universe --config examples/research.toml                      --universe sp1500_pit --as-of 2024-02-01)
+          after=$(uv run stratum universe --config examples/research.toml                     --universe sp1500_pit --as-of 2024-02-20)
+          if ! echo "$before" | grep -q ZZZ; then
+            echo "survivorship regression: ZZZ absent before its delisting"; exit 1
+          fi
+          if echo "$after" | grep -q ZZZ; then
+            echo "survivorship regression: ZZZ still present after removal"; exit 1
+          fi
+          echo "ok: delisted name present before, absent after"
+      - run: uv run stratum snapshot --config examples/research.toml --as-of 2024-03-01T00:00:00Z
