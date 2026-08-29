@@ -1,6 +1,6 @@
 # The Ledger handoff
 
-Stratum and [Ledger](../../Ledger) are sibling projects with a deliberate
+Stratum and Ledger are sibling projects with a deliberate
 split: **Stratum ingests and validates at origin; Ledger backtests and
 scores.** They share no code. What they share is a data contract.
 
