@@ -27,7 +27,6 @@ def test_all_bundled_adapters_have_manifests() -> None:
         "market_csv",
         "universe_csv",
         "cost_default",
-        "parquet_panel",
     } <= names
 
 

@@ -67,7 +67,6 @@ google_trends = "stratum.adapters.google_trends:GoogleTrendsAdapter"
 market_csv = "stratum.adapters.market_csv:CsvMarketDataAdapter"
 universe_csv = "stratum.adapters.universe_csv:CsvUniverseAdapter"
 cost_default = "stratum.adapters.cost_default:DefaultCostModelAdapter"
-parquet_panel = "stratum.adapters.parquet_panel:ParquetPanelExporter"
 
 # Factor packs register a module that
 # exposes FACTOR_DIR, a directory of declarative YAML factor definitions.
