@@ -8,10 +8,16 @@ pytest.importorskip("duckdb")
 
 from stratum.adapters.manifest import KnowledgeTimeBasis
 from stratum.guard.leakage import IngestMode, LeakageGuard
-from stratum.schema.payloads import MarketCorporateAction, ModelRef, SocialSentiment
+from stratum.schema.payloads import (
+    FundamentalFact,
+    MarketCorporateAction,
+    ModelRef,
+    SocialSentiment,
+)
 from stratum.schema.times import AsOf, EventTime, KnowledgeTime
-from stratum.store.duckdb_store import DuckDBSignalStore
+from stratum.store.duckdb_store import OBSERVATIONS_DDL, DuckDBSignalStore
 from stratum.store.interface import StoreError
+from stratum.store.snapshot_store import SnapshotStore
 from tests.conftest import make_manifest, make_observation
 
 GUARD = LeakageGuard(now=lambda: datetime(2026, 7, 1, tzinfo=UTC))
@@ -83,6 +89,87 @@ def test_pit_read_returns_latest_vintage_as_of(store):
         )
         == []
     )
+
+
+def test_pit_keeps_independent_series_at_the_same_event_time(store, tmp_path):
+    event_time = EventTime.at(datetime(2025, 12, 31, tzinfo=UTC))
+
+    def fact(obs_id, concept, value, knowledge, vintage):
+        return make_observation(
+            observation_id=obs_id,
+            signal_type="fundamental.fact",
+            series_id=f"{concept}|USD||2025-12-31",
+            native_entity="0000320193",
+            event_time=event_time,
+            knowledge_time=KnowledgeTime.at(knowledge),
+            vintage_id=vintage,
+            payload=FundamentalFact(
+                concept=concept,
+                value=value,
+                unit="USD",
+                period_end=date(2025, 12, 31),
+                period_type="instant",
+            ),
+        )
+
+    assets = fact(
+        "01J0000000000000000000F1",
+        "Assets",
+        100.0,
+        datetime(2026, 2, 1, tzinfo=UTC),
+        "filing-1",
+    )
+    revenue = fact(
+        "01J0000000000000000000F2",
+        "Revenues",
+        30.0,
+        datetime(2026, 2, 1, tzinfo=UTC),
+        "filing-1",
+    )
+    revised_assets = fact(
+        "01J0000000000000000000F3",
+        "Assets",
+        105.0,
+        datetime(2026, 3, 1, tzinfo=UTC),
+        "filing-2",
+    )
+    store.write(validated(assets, revenue, revised_assets), run_id="run-1")
+    as_of = AsOf.at(datetime(2026, 4, 1, tzinfo=UTC))
+
+    live = list(store.read(signal_type="fundamental.fact", as_of=as_of))
+    snapshot_ref = store.snapshot(as_of=as_of, target_dir=tmp_path / "series-snapshot")
+    snapshot = list(
+        SnapshotStore(snapshot_ref.path).read(signal_type="fundamental.fact", as_of=as_of)
+    )
+
+    assert {(row.payload.concept, row.payload.value) for row in live} == {
+        ("Assets", 105.0),
+        ("Revenues", 30.0),
+    }
+    assert [row.observation_id for row in snapshot] == [row.observation_id for row in live]
+
+
+def test_existing_store_is_migrated_with_default_series(tmp_path):
+    import duckdb
+
+    path = tmp_path / "legacy.duckdb"
+    legacy_ddl = OBSERVATIONS_DDL.replace("    series_id         TEXT NOT NULL DEFAULT '',\n", "")
+    connection = duckdb.connect(str(path))
+    connection.execute(legacy_ddl)
+    connection.close()
+
+    migrated = DuckDBSignalStore(path)
+    try:
+        migrated.write(validated(FIRST), run_id="run-1")
+        seen = list(
+            migrated.read(
+                signal_type="social.sentiment",
+                as_of=AsOf.at(datetime(2026, 6, 1, tzinfo=UTC)),
+            )
+        )
+    finally:
+        migrated.close()
+    assert seen[0].series_id == ""
 
 
 def test_write_is_idempotent(store):

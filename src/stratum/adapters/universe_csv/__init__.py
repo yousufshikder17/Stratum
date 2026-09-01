@@ -267,6 +267,7 @@ class CsvUniverseAdapter(UniverseAdapter):
             source_id=self._source_id,
             adapter_id=self.ADAPTER_ID,
             native_entity=interval.security,
+            series_id=self._universe_id,
             event_time=event_time,
             # This edge's own announcement — never the other edge's.
             knowledge_time=_midnight(announced_on),

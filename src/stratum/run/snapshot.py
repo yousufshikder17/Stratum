@@ -1,8 +1,8 @@
 """Dataset snapshots (spec §2.3, §4.8).
 
 A snapshot is a content-addressed, immutable materialization of the store at a
-fixed ``as_of``: Parquet partitions plus a manifest of the source vintages
-used. Snapshot materialization and upload are not implemented yet.
+fixed ``as_of``: Parquet data plus a manifest of the source vintages used.
+Snapshot upload is not implemented yet.
 """
 
 from __future__ import annotations

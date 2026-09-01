@@ -1,7 +1,7 @@
 """Embedded DuckDB + Parquet bitemporal store — researcher profile (spec §4.8).
 
 Append-only with vintage columns, indexed by ``(security_id, signal_type,
-event_time_ns, knowledge_time_ns)``. Columnar, crash-safe, fast ``as_of``
+series_id, event_time_ns, knowledge_time_ns)``. Columnar, crash-safe, fast ``as_of``
 slicing, shippable as a content-addressed snapshot.
 
 The layout mirrors the sibling Ledger store deliberately: identical
@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS observations (
     observation_id    TEXT PRIMARY KEY,      -- ULID; idempotency key
     schema_version    TEXT NOT NULL,
     signal_type       TEXT NOT NULL,
+    series_id         TEXT NOT NULL DEFAULT '',
     run_id            TEXT NOT NULL,
     source_id         TEXT NOT NULL,
     adapter_id        TEXT NOT NULL,
@@ -60,8 +61,16 @@ CREATE INDEX IF NOT EXISTS idx_obs_vintage_key
     ON observations (native_entity, signal_type, event_time_ns, vintage_id);
 """
 
+OBSERVATIONS_MIGRATION_DDL = """
+ALTER TABLE observations ADD COLUMN IF NOT EXISTS series_id TEXT DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_obs_pit_series
+    ON observations (security_id, signal_type, series_id, event_time_ns, knowledge_time_ns);
+CREATE INDEX IF NOT EXISTS idx_obs_vintage_series
+    ON observations (native_entity, signal_type, series_id, event_time_ns, vintage_id);
+"""
+
 _COLUMNS = (
-    "observation_id, schema_version, signal_type, run_id, source_id, adapter_id, "
+    "observation_id, schema_version, signal_type, series_id, run_id, source_id, adapter_id, "
     "security_id, native_entity, event_time_ns, knowledge_time_ns, ingest_time_ns, "
     "vintage_id, data_class, license_tag, derived_by, payload, raw"
 )
@@ -70,12 +79,12 @@ _COLUMNS = (
 #: Staging table for a batched write. TEMP, so it is connection-local and
 #: cannot be mistaken for durable state.
 _STAGING = "_stratum_incoming"
-_PLACEHOLDERS = ",".join("?" * 17)
+_PLACEHOLDERS = ",".join("?" * 18)
 
 
 def _same_content(left: tuple[Any, ...], right: tuple[Any, ...]) -> bool:
     """Do two staged rows carry the same payload and the same two clocks?"""
-    return (left[15], left[8], left[9]) == (right[15], right[8], right[9])
+    return (left[16], left[9], left[10]) == (right[16], right[9], right[10])
 
 
 _DATE_FIELDS = ("ex_date", "record_date", "pay_date", "last_trade_date", "period_end")
@@ -157,6 +166,7 @@ def _row_from_observation(o: Observation, ingest_ns: int) -> tuple[Any, ...]:
         o.observation_id,
         SCHEMA_VERSION,
         o.signal_type,
+        o.series_id,
         o.run_id,
         o.source_id,
         o.adapter_id,
@@ -178,20 +188,21 @@ def _observation_from_row(row: tuple[Any, ...]) -> Observation:
     return Observation(
         observation_id=row[0],
         signal_type=row[2],
-        run_id=row[3],
-        source_id=row[4],
-        adapter_id=row[5],
-        security_id=row[6],
-        native_entity=row[7],
-        event_time=EventTime(row[8]),
-        knowledge_time=KnowledgeTime(row[9]),
-        ingest_time=IngestTime(row[10]),
-        vintage_id=row[11],
-        data_class=DataClass(row[12]),
-        license_tag=row[13],
-        derived_by=ModelRef.parse(row[14]) if row[14] else None,
-        payload=_payload_from_fields(row[2], json.loads(row[15])),
-        raw=row[16],
+        series_id=row[3],
+        run_id=row[4],
+        source_id=row[5],
+        adapter_id=row[6],
+        security_id=row[7],
+        native_entity=row[8],
+        event_time=EventTime(row[9]),
+        knowledge_time=KnowledgeTime(row[10]),
+        ingest_time=IngestTime(row[11]),
+        vintage_id=row[12],
+        data_class=DataClass(row[13]),
+        license_tag=row[14],
+        derived_by=ModelRef.parse(row[15]) if row[15] else None,
+        payload=_payload_from_fields(row[2], json.loads(row[16])),
+        raw=row[17],
     )
 
 
@@ -209,6 +220,7 @@ class DuckDBSignalStore(SignalStore):
 
             self._conn = duckdb.connect(str(self._path))
             self._conn.execute(OBSERVATIONS_DDL)
+            self._conn.execute(OBSERVATIONS_MIGRATION_DDL)
         return self._conn
 
     # -- write ----------------------------------------------------------------
@@ -230,7 +242,7 @@ class DuckDBSignalStore(SignalStore):
         ingest_ns = IngestTime.at(datetime.now(UTC)).ns
         rows: list[tuple[Any, ...]] = []
         by_id: dict[str, tuple[Any, ...]] = {}
-        by_key: dict[tuple[str, str, int, str], str] = {}
+        by_key: dict[tuple[str, str, str, int, str], str] = {}
         skipped = 0
 
         for record in records:
@@ -247,12 +259,13 @@ class DuckDBSignalStore(SignalStore):
                     f"observation_id {o.observation_id!r} appears twice in one batch "
                     "with different content — ids are immutable (spec §3.2 rule 4)"
                 )
-            key = (o.native_entity, o.signal_type, o.event_time.ns, o.vintage_id)
+            key = (o.native_entity, o.signal_type, o.series_id, o.event_time.ns, o.vintage_id)
             clashing = by_key.get(key)
             if clashing is not None:
                 raise StoreError(
                     f"in-place update rejected: ({o.native_entity!r}, {o.signal_type!r}, "
-                    f"event_time={o.event_time.ns}, vintage={o.vintage_id!r}) appears "
+                    f"series={o.series_id!r}, event_time={o.event_time.ns}, "
+                    f"vintage={o.vintage_id!r}) appears "
                     f"twice in one batch ({clashing!r} and {o.observation_id!r}) — "
                     "restatements must be new vintages"
                 )
@@ -299,10 +312,12 @@ class DuckDBSignalStore(SignalStore):
             # carry a new vintage_id, never rewrite the existing one (§4.4 rule 2).
             clash = conn.execute(
                 f"""
-                SELECT i.native_entity, i.signal_type, i.event_time_ns, i.vintage_id
+                SELECT i.native_entity, i.signal_type, i.series_id,
+                       i.event_time_ns, i.vintage_id
                 FROM {_STAGING} i JOIN observations o
                   ON o.native_entity = i.native_entity
                  AND o.signal_type = i.signal_type
+                 AND o.series_id = i.series_id
                  AND o.event_time_ns = i.event_time_ns
                  AND o.vintage_id = i.vintage_id
                 LIMIT 1
@@ -311,7 +326,8 @@ class DuckDBSignalStore(SignalStore):
             if clash is not None:
                 raise StoreError(
                     f"in-place update rejected: ({clash[0]!r}, {clash[1]!r}, "
-                    f"event_time={clash[2]}, vintage={clash[3]!r}) already "
+                    f"series={clash[2]!r}, event_time={clash[3]}, "
+                    f"vintage={clash[4]!r}) already "
                     "exists — restatements must be new vintages"
                 )
 
@@ -348,16 +364,16 @@ class DuckDBSignalStore(SignalStore):
             predicates.append("event_time_ns < ?")
             params.append(event_end.ns)
         # The single PIT selection rule (spec §4.4 rule 1): latest vintage per
-        # (entity, event_time) among rows knowable at as_of. Ties on
+        # (entity, series, event_time) among rows knowable at as_of. Ties on
         # knowledge_time break on vintage_id then observation_id — total,
         # deterministic order.
         sql = (
             f"SELECT {_COLUMNS} FROM observations WHERE {' AND '.join(predicates)} "
             "QUALIFY row_number() OVER ("
-            "  PARTITION BY coalesce(security_id, native_entity), event_time_ns"
+            "  PARTITION BY coalesce(security_id, native_entity), series_id, event_time_ns"
             "  ORDER BY knowledge_time_ns DESC, vintage_id DESC, observation_id DESC"
             ") = 1 "
-            "ORDER BY event_time_ns, coalesce(security_id, native_entity)"
+            "ORDER BY event_time_ns, coalesce(security_id, native_entity), series_id"
         )
         for row in conn.execute(sql, params).fetchall():
             yield _observation_from_row(row)
@@ -375,7 +391,7 @@ class DuckDBSignalStore(SignalStore):
         conn.execute(
             "COPY (SELECT * FROM observations WHERE knowledge_time_ns <= ? "
             "ORDER BY signal_type, coalesce(security_id, native_entity), "
-            "event_time_ns, knowledge_time_ns, observation_id) "
+            "series_id, event_time_ns, knowledge_time_ns, observation_id) "
             f"TO '{parquet_path.as_posix()}' (FORMAT PARQUET)",
             [as_of.ns],
         )

@@ -59,6 +59,9 @@ class Observation:
     #: Adapter's raw entity key (CIK, cashtag, search term). The adapter owns
     #: provenance; the core's resolver owns identity (spec §3.2 rule 2).
     native_entity: str
+    #: Stable sub-series within a signal type (for example an XBRL concept or
+    #: universe id). Empty means the signal has one series per entity.
+    series_id: str = ""
     #: Canonical entity id — resolver output; None until resolved (spec §4.5).
     security_id: str | None = None
 

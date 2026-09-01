@@ -111,10 +111,10 @@ class SnapshotStore(SignalStore):
         sql = (
             f"SELECT {_COLUMNS} FROM {self._relation} WHERE {' AND '.join(predicates)} "
             "QUALIFY row_number() OVER ("
-            "  PARTITION BY coalesce(security_id, native_entity), event_time_ns"
+            "  PARTITION BY coalesce(security_id, native_entity), series_id, event_time_ns"
             "  ORDER BY knowledge_time_ns DESC, vintage_id DESC, observation_id DESC"
             ") = 1 "
-            "ORDER BY event_time_ns, coalesce(security_id, native_entity)"
+            "ORDER BY event_time_ns, coalesce(security_id, native_entity), series_id"
         )
         for row in conn.execute(sql, params).fetchall():
             yield _observation_from_row(row)

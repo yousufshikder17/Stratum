@@ -267,6 +267,7 @@ class CsvMarketDataAdapter(MarketDataAdapter):
                 # Two actions can share an ex-date (a split and a dividend);
                 # the type keeps their ids distinct.
                 key_suffix=action.action_type,
+                series_id=action.action_type,
             )
         for event in self._read_delistings():
             yield self._observation(
@@ -290,6 +291,7 @@ class CsvMarketDataAdapter(MarketDataAdapter):
         knowledge_time: KnowledgeTime,
         payload: Payload,
         key_suffix: str = "",
+        series_id: str = "",
     ) -> Observation:
         day = event_time.as_datetime().date().isoformat()
         key = f"{self._source_id}|{signal_type}|{native_entity}|{day}|{key_suffix}"
@@ -300,6 +302,7 @@ class CsvMarketDataAdapter(MarketDataAdapter):
             source_id=self._source_id,
             adapter_id=self.ADAPTER_ID,
             native_entity=native_entity,
+            series_id=series_id,
             event_time=event_time,
             knowledge_time=knowledge_time,
             data_class=self._data_class,

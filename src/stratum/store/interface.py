@@ -9,8 +9,8 @@ Type-level guarantees:
 - ``write`` accepts only :class:`ValidatedObservation` — the leakage guard's
   proof type. There is no write path for unvalidated adapter output.
 - ``read`` requires an :class:`AsOf` keyword with no default — there is no
-  unscoped read. The store returns, per ``(security_id, event_time,
-  signal_type)``, the latest vintage with ``knowledge_time <= as_of``;
+  unscoped read. The store returns, per ``(security_id, signal_type,
+  series_id, event_time)``, the latest vintage with ``knowledge_time <= as_of``;
   nothing with ``knowledge_time > as_of`` is ever visible (spec §4.4 rule 1).
 - The store is append-only: restatements and backfills create new vintages,
   never overwrites (spec §4.4 rule 2).
@@ -62,7 +62,7 @@ class SignalStore(ABC):
     def write(self, records: Iterable[ValidatedObservation], *, run_id: str) -> WriteReceipt:
         """Append validated observations. Idempotent per observation_id;
         re-pulling a window must not duplicate (spec §3.2 rule 4). New
-        information about an existing ``(entity, event_time)`` must arrive as
+        information about an existing ``(entity, series_id, event_time)`` must arrive as
         a new vintage — an in-place update raises :class:`StoreError`."""
 
     @abstractmethod
