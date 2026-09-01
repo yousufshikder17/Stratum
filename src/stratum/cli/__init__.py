@@ -6,9 +6,9 @@ commands read only from the immutable PIT store snapshot named in the run
 manifest — the structural guarantee that a backtest cannot accidentally fetch
 future data (spec §2.4).
 
-``ingest``, ``store``, ``snapshot``, ``factor --validate-only``, and
-``adapters`` are implemented. ``backtest`` and ``report`` are still scaffolds:
-the bias-controlled simulation loop (spec §6) is the next build step and
+``ingest``, ``store``, ``snapshot``, ``factor``, and ``adapters`` are
+implemented. ``backtest`` and ``report`` are still scaffolds:
+the bias-controlled simulation loop (spec §6) belongs in Ledger, and
 exiting 2 is a more honest answer than a plausible-looking number.
 """
 
@@ -36,7 +36,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-_NOT_IMPLEMENTED = "Scaffold: this command is not implemented."
+_LEDGER_BOUNDARY = "This workflow belongs to Ledger; pass it a pinned Stratum snapshot."
 
 
 def _parse_as_of(text: str) -> datetime:
@@ -116,15 +116,57 @@ def store(
 def factor(
     definition: Path = typer.Argument(..., help="Path to a factor YAML definition."),
     validate_only: bool = typer.Option(False, help="Parse + PIT-check without building."),
+    snapshot_dir: Path | None = typer.Option(None, "--snapshot", help="Pinned snapshot directory."),
+    dates: str | None = typer.Option(None, "--dates", help="Comma-separated rebalance dates."),
+    out: Path | None = typer.Option(None, "--out", help="Write JSON result to this path."),
 ) -> None:
-    """Validate a factor definition; factor computation is not implemented."""
+    """Validate or build point-in-time factor exposures from a snapshot."""
+    import json
+
     from stratum.factors.definition import load_factor
+    from stratum.factors.diagnostics import summarize_exposures
+    from stratum.factors.engine import FactorEngine
+    from stratum.store.snapshot_store import SnapshotStore
 
     fd = load_factor(definition)
     typer.echo(f"OK: {fd.id} v{fd.version} family={fd.family.value} embargo={fd.pit.embargo}")
-    if not validate_only:
-        typer.echo(_NOT_IMPLEMENTED)
-        raise typer.Exit(code=2)
+    if validate_only:
+        return
+    if snapshot_dir is None or not dates:
+        raise typer.BadParameter(
+            "--snapshot and --dates are required unless --validate-only is used"
+        )
+    try:
+        rebalance_dates = sorted(
+            {datetime.fromisoformat(item.strip()).date() for item in dates.split(",")}
+        )
+    except ValueError as exc:
+        raise typer.BadParameter("--dates must contain ISO dates") from exc
+    snapshot_store = SnapshotStore(snapshot_dir)
+    try:
+        panel = FactorEngine(
+            store=snapshot_store,
+            snapshot=snapshot_store.as_snapshot_ref(),
+        ).build(fd, rebalance_dates=rebalance_dates)
+    finally:
+        snapshot_store.close()
+    result = {
+        "factor_id": panel.factor_id,
+        "factor_version": panel.factor_version,
+        "snapshot_hash": snapshot_store.content_hash,
+        "build_hash": panel.build_hash,
+        "diagnostics": summarize_exposures(panel),
+        "exposures": {
+            day.isoformat(): dict(sorted(values.items()))
+            for day, values in sorted(panel.exposures.items())
+        },
+    }
+    rendered = json.dumps(result, indent=2, sort_keys=True)
+    if out is None:
+        typer.echo(rendered)
+    else:
+        out.write_text(rendered + "\n", encoding="utf-8")
+        typer.echo(f"wrote {out}")
 
 
 @app.command()
@@ -136,8 +178,8 @@ def backtest(
     snapshot: str | None = typer.Option(None, "--snapshot", help="Snapshot hash to pin."),
     seed: int = typer.Option(0, "--seed"),
 ) -> None:
-    """Scaffold for planned bias-controlled backtesting; not implemented."""
-    typer.echo(_NOT_IMPLEMENTED)
+    """Direct simulation work to the sibling Ledger project."""
+    typer.echo(_LEDGER_BOUNDARY)
     raise typer.Exit(code=2)
 
 
@@ -146,8 +188,8 @@ def report(
     run_id: str = typer.Argument(..., help="Run id or manifest hash."),
     fmt: str = typer.Option("markdown", "--format", help="markdown | html"),
 ) -> None:
-    """Scaffold for planned diagnostics rendering; not implemented."""
-    typer.echo(_NOT_IMPLEMENTED)
+    """Direct return-linked reporting to the sibling Ledger project."""
+    typer.echo(_LEDGER_BOUNDARY)
     raise typer.Exit(code=2)
 
 

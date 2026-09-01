@@ -87,3 +87,9 @@ jobs:
           fi
           echo "ok: delisted name present before, absent after"
       - run: uv run stratum snapshot --config examples/research.toml --as-of 2024-03-01T00:00:00Z
+      - name: build factor from immutable snapshot
+        run: >-
+          uv run stratum factor factors/price_momentum_5d.yaml
+          --snapshot examples/data/snapshots/2024-03-01T000000Z
+          --dates 2024-02-29
+          --out examples/data/price_momentum_5d.json

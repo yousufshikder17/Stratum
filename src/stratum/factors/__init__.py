@@ -10,6 +10,7 @@ from stratum.factors.definition import (
     TransformStep,
     load_factor,
 )
+from stratum.factors.diagnostics import summarize_exposures
 from stratum.factors.engine import ExposurePanel, FactorEngine
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "PitPolicy",
     "TransformStep",
     "load_factor",
+    "summarize_exposures",
 ]

@@ -164,6 +164,64 @@ def test_snapshot_is_content_addressed(project: Path) -> None:
     assert manifest["row_count"] > 0
 
 
+def test_factor_builds_exposures_and_diagnostics_from_snapshot(project: Path) -> None:
+    runner.invoke(app, ["ingest", "--config", str(project), "--backfill"])
+    snapshot_dir = project.parent / "factor-snapshot"
+    snapshot_result = runner.invoke(
+        app,
+        [
+            "snapshot",
+            "--config",
+            str(project),
+            "--as-of",
+            "2024-03-01T00:00:00Z",
+            "--out",
+            str(snapshot_dir),
+        ],
+    )
+    assert snapshot_result.exit_code == 0
+    definition = project.parent / "factor.yaml"
+    definition.write_text(
+        """
+factor:
+  id: price_rank
+  version: 0.1.0
+  family: momentum
+inputs:
+  - market: market.bar
+    field: close
+transform:
+  - op: cross_sectional_rank
+""".strip(),
+        encoding="utf-8",
+    )
+    output = project.parent / "factor-result.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "factor",
+            str(definition),
+            "--snapshot",
+            str(snapshot_dir),
+            "--dates",
+            "2024-01-04",
+            "--out",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    document = json.loads(output.read_text())
+    assert (
+        document["snapshot_hash"]
+        == json.loads((snapshot_dir / "manifest.json").read_text())["content_hash"]
+    )
+    assert document["exposures"]["2024-01-04"] == {"SEC-1": 1.0, "SEC-3": 0.0}
+    assert document["diagnostics"]["2024-01-04"]["coverage"] == 2
+    assert document["diagnostics"]["2024-01-04"]["mean"] == pytest.approx(0.5)
+
+
 def test_snapshot_push_is_honest_about_being_unavailable(project: Path) -> None:
     runner.invoke(app, ["ingest", "--config", str(project), "--backfill"])
     result = runner.invoke(
@@ -184,11 +242,10 @@ def test_snapshot_push_is_honest_about_being_unavailable(project: Path) -> None:
     assert "push unavailable" in result.stdout
 
 
-def test_backtest_is_still_a_scaffold() -> None:
-    """Exiting 2 beats printing a plausible number the engine cannot back up."""
+def test_backtest_points_to_ledger_boundary() -> None:
     result = runner.invoke(app, ["backtest", "--factor", "x", "--universe", "y"])
     assert result.exit_code == 2
-    assert "not implemented" in result.stdout
+    assert "belongs to Ledger" in result.stdout
 
 
 def test_naive_as_of_is_read_as_utc(project: Path) -> None:
