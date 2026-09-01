@@ -12,9 +12,10 @@ from stratum.factors.engine import FactorEngine
 from stratum.guard.leakage import IngestMode, LeakageGuard
 from stratum.schema.data_class import DataClass
 from stratum.schema.observation import Observation
-from stratum.schema.payloads import MarketBar, SocialAttention
+from stratum.schema.payloads import FundamentalFact, MarketBar, SocialAttention
 from stratum.schema.times import AsOf, EventTime, KnowledgeTime
 from stratum.store.duckdb_store import DuckDBSignalStore
+from stratum.store.snapshot_store import SnapshotStore
 from tests.conftest import make_manifest
 
 GUARD = LeakageGuard(now=lambda: datetime(2026, 8, 1, tzinfo=UTC))
@@ -25,7 +26,7 @@ def validated(*observations):
     return [GUARD.validate(o, manifest=MANIFEST, mode=IngestMode.BACKFILL) for o in observations]
 
 
-def attention(obs_id, sid, event_day, know_dt, velocity):
+def attention(obs_id, sid, event_day, know_dt, velocity, mention_count=100):
     return Observation(
         observation_id=obs_id,
         signal_type="social.attention",
@@ -39,7 +40,11 @@ def attention(obs_id, sid, event_day, know_dt, velocity):
         vintage_id="v1",
         data_class=DataClass.PUBLIC_AGG,
         license_tag="test",
-        payload=SocialAttention(mention_count=100, unique_authors=40, velocity=velocity),
+        payload=SocialAttention(
+            mention_count=mention_count,
+            unique_authors=40,
+            velocity=velocity,
+        ),
     )
 
 
@@ -83,7 +88,9 @@ def store(tmp_path):
     ]
     s.write(validated(*rows), run_id="run-1")
     snap = s.snapshot(as_of=AsOf.at(datetime(2026, 8, 1, tzinfo=UTC)), target_dir=tmp_path / "snap")
-    yield s, snap
+    snapshot_store = SnapshotStore(snap.path)
+    yield snapshot_store, snap
+    snapshot_store.close()
     s.close()
 
 
@@ -235,3 +242,162 @@ transform:
     first = engine.build(definition, rebalance_dates=REBALANCE)
     second = engine.build(definition, rebalance_dates=REBALANCE)
     assert first.build_hash == second.build_hash
+
+
+def test_reference_factor_runs_and_applies_coverage_floor(store):
+    s, snap = store
+    definition = load_factor(
+        Path(__file__).parents[1]
+        / "src"
+        / "stratum"
+        / "factors"
+        / "reference"
+        / "reddit_attention_momentum.yaml"
+    )
+    panel = FactorEngine(store=s, snapshot=snap).build(
+        definition,
+        rebalance_dates=[date(2026, 7, 12)],
+    )
+    assert panel.coverage[date(2026, 7, 12)] == 3
+
+
+def test_minimum_coverage_excludes_thin_observations(store, tmp_path):
+    live = DuckDBSignalStore(tmp_path / "coverage.duckdb")
+    live.write(
+        validated(
+            attention("att-AAA-cov", "AAA", (7, 8), JUL8, 2.0),
+            attention("att-BBB-cov", "BBB", (7, 8), JUL8, 3.0),
+            attention("att-DDD-cov", "DDD", (7, 8), JUL8, 9.0, mention_count=10),
+        ),
+        run_id="run-2",
+    )
+    snap = live.snapshot(
+        as_of=AsOf.at(datetime(2026, 8, 1, tzinfo=UTC)),
+        target_dir=tmp_path / "coverage-snapshot",
+    )
+    snapshot_store = SnapshotStore(snap.path)
+    definition = write_factor_yaml(
+        tmp_path,
+        """
+factor:
+  id: coverage_floor
+  version: 0.1.0
+  family: sentiment
+inputs:
+  - signal: social.attention
+    field: velocity
+    min_coverage: 50
+pit:
+  embargo: 1d
+transform:
+  - op: cross_sectional_rank
+""",
+    )
+    try:
+        panel = FactorEngine(store=snapshot_store, snapshot=snap).build(
+            definition,
+            rebalance_dates=REBALANCE,
+        )
+        assert set(panel.exposures[REBALANCE[0]]) == {"AAA", "BBB"}
+    finally:
+        snapshot_store.close()
+        live.close()
+
+
+def test_rebalance_after_snapshot_cutoff_is_rejected(store, tmp_path):
+    s, snap = store
+    definition = write_factor_yaml(
+        tmp_path,
+        """
+factor:
+  id: cutoff
+  version: 0.1.0
+  family: custom
+inputs:
+  - market: market.bar
+""",
+    )
+    with pytest.raises(ValueError, match="exceeds snapshot"):
+        FactorEngine(store=s, snapshot=snap).build(
+            definition,
+            rebalance_dates=[date(2026, 8, 3)],
+        )
+
+
+def test_multi_series_input_requires_and_honors_series_id(tmp_path):
+    live = DuckDBSignalStore(tmp_path / "series.duckdb")
+    event = datetime(2025, 12, 31, tzinfo=UTC)
+    known = datetime(2026, 2, 1, tzinfo=UTC)
+
+    def fact(obs_id, sid, concept, value):
+        return Observation(
+            observation_id=obs_id,
+            signal_type="fundamental.fact",
+            series_id=f"{concept}|USD||2025-12-31",
+            run_id="run-1",
+            source_id="test",
+            adapter_id="test",
+            security_id=sid,
+            native_entity=sid,
+            event_time=EventTime.at(event),
+            knowledge_time=KnowledgeTime.at(known),
+            vintage_id="filing-1",
+            data_class=DataClass.PUBLIC_AGG,
+            license_tag="test",
+            payload=FundamentalFact(
+                concept=concept,
+                value=value,
+                unit="USD",
+                period_end=date(2025, 12, 31),
+                period_type="instant",
+            ),
+        )
+
+    live.write(
+        validated(
+            fact("fact-AAA-assets", "AAA", "Assets", 100.0),
+            fact("fact-AAA-revenue", "AAA", "Revenues", 25.0),
+            fact("fact-BBB-assets", "BBB", "Assets", 200.0),
+            fact("fact-BBB-revenue", "BBB", "Revenues", 40.0),
+        ),
+        run_id="run-1",
+    )
+    snap = live.snapshot(
+        as_of=AsOf.at(datetime(2026, 3, 1, tzinfo=UTC)),
+        target_dir=tmp_path / "series-snapshot",
+    )
+    snapshot_store = SnapshotStore(snap.path)
+    selected = write_factor_yaml(
+        tmp_path,
+        """
+factor:
+  id: assets
+  version: 0.1.0
+  family: value
+inputs:
+  - signal: fundamental.fact
+    series_id: Assets|USD||2025-12-31
+    field: value
+""",
+    )
+    ambiguous = write_factor_yaml(
+        tmp_path,
+        """
+factor:
+  id: ambiguous
+  version: 0.1.0
+  family: value
+inputs:
+  - signal: fundamental.fact
+    field: value
+""",
+    )
+    engine = FactorEngine(store=snapshot_store, snapshot=snap)
+    try:
+        panel = engine.build(selected, rebalance_dates=[date(2026, 2, 3)])
+        assert panel.exposures[date(2026, 2, 3)] == {"AAA": 100.0, "BBB": 200.0}
+        with pytest.raises(ValueError, match="series_id"):
+            engine.build(ambiguous, rebalance_dates=[date(2026, 2, 3)])
+    finally:
+        snapshot_store.close()
+        live.close()

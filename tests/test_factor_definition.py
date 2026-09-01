@@ -19,12 +19,14 @@ REFERENCE_YAML = (
     REPO / "src" / "stratum" / "factors" / "reference" / "reddit_attention_momentum.yaml"
 )
 WORKSPACE_YAML = REPO / "factors" / "reddit_attention_momentum.yaml"
+PRICE_MOMENTUM_YAML = REPO / "factors" / "price_momentum_5d.yaml"
 
 
 @pytest.mark.parametrize("path", [REFERENCE_YAML, WORKSPACE_YAML], ids=["packaged", "workspace"])
 def test_reference_factor_loads(path: Path) -> None:
     fd = load_factor(path)
     assert fd.id == "reddit_attention_momentum"
+    assert fd.version == "0.3.0"
     assert fd.family is FactorFamily.SENTIMENT
     assert fd.baseline == "price_momentum_12_1"
     assert fd.pit.as_of_rule == "knowledge_time"
@@ -32,7 +34,6 @@ def test_reference_factor_loads(path: Path) -> None:
     assert [step.op for step in fd.transform] == [
         "pct_change",
         "winsorize",
-        "sector_neutralize",
         "cross_sectional_rank",
         "zscore",
     ]
@@ -51,3 +52,14 @@ def test_input_names_exactly_one_source() -> None:
         FactorInput()  # neither signal nor market
     with pytest.raises(InvalidFactorDefinition):
         FactorInput(signal="social.attention", market="market.bar")  # both
+
+
+def test_minimum_coverage_must_be_positive() -> None:
+    with pytest.raises(InvalidFactorDefinition, match="positive"):
+        FactorInput(signal="social.attention", min_coverage=0)
+
+
+def test_runnable_market_reference_loads() -> None:
+    factor = load_factor(PRICE_MOMENTUM_YAML)
+    assert factor.id == "price_momentum_5d"
+    assert factor.inputs[0].window == "5d"

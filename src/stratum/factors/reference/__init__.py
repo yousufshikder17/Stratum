@@ -1,7 +1,6 @@
 """Bundled declarative factor examples.
 
-Definitions validate, but their registered transforms and computation engine
-are not implemented.
+Definitions use the registered point-in-time transforms and computation engine.
 
 Factor packs expose ``FACTOR_DIR``: a traversable directory of YAML factor
 definitions.

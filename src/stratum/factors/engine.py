@@ -26,7 +26,8 @@ from stratum.factors.definition import FactorDefinition, FactorInput
 from stratum.factors.transforms import get_op
 from stratum.schema.payloads import GenericPayload, Payload
 from stratum.schema.times import AsOf
-from stratum.store.interface import SignalStore, SnapshotRef
+from stratum.store.interface import SnapshotRef
+from stratum.store.snapshot_store import SnapshotStore
 
 __all__ = ["DEFAULT_FIELDS", "ExposurePanel", "FactorEngine"]
 
@@ -69,6 +70,16 @@ def _label_value(payload: Any, field_name: str | None) -> str | None:
     return None
 
 
+def _coverage_value(payload: Any) -> float | None:
+    """Observation-level sample size used by ``min_coverage``."""
+    fields = payload.fields if isinstance(payload, GenericPayload) else None
+    for name in ("sample_size", "mention_count"):
+        raw = fields.get(name) if fields is not None else getattr(payload, name, None)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            return float(raw)
+    return None
+
+
 @dataclass(frozen=True, kw_only=True)
 class ExposurePanel:
     """Cross-sectional exposures: rebalance date -> (security_id -> value),
@@ -83,7 +94,9 @@ class ExposurePanel:
 
 
 class FactorEngine:
-    def __init__(self, *, store: SignalStore, snapshot: SnapshotRef) -> None:
+    def __init__(self, *, store: SnapshotStore, snapshot: SnapshotRef) -> None:
+        if store.content_hash != snapshot.content_hash:
+            raise ValueError("factor store does not match the pinned snapshot hash")
         self._store = store
         self._snapshot = snapshot
 
@@ -98,10 +111,22 @@ class FactorEngine:
         assert signal_type is not None  # FactorInput enforces exactly-one-of
         default_field = DEFAULT_FIELDS.get(signal_type)
         latest_ns: dict[str, int] = {}
+        seen_series: dict[str, str] = {}
         numeric: dict[str, float] = {}
         labels: dict[str, str] = {}
         for obs in self._store.read(signal_type=signal_type, as_of=as_of):
+            if spec.series_id is not None and obs.series_id != spec.series_id:
+                continue
             sid = obs.security_id or obs.native_entity
+            prior_series = seen_series.setdefault(sid, obs.series_id)
+            if spec.series_id is None and prior_series != obs.series_id:
+                raise ValueError(
+                    f"input {signal_type!r} has multiple series for {sid!r}; "
+                    "set input.series_id explicitly"
+                )
+            coverage = _coverage_value(obs.payload)
+            if spec.min_coverage is not None and (coverage is None or coverage < spec.min_coverage):
+                continue
             ns = obs.event_time.ns
             if sid in latest_ns and ns < latest_ns[sid]:
                 continue  # an older event than the one already in force
@@ -129,25 +154,34 @@ class FactorEngine:
         for t in rebalance_dates:
             decision_day = t - embargo
             as_of = _as_of_for(decision_day)
-            columns: list[dict[str, float]] = []
+            if as_of.ns > self._snapshot.as_of.ns:
+                raise ValueError(
+                    f"rebalance date {t} exceeds snapshot as_of "
+                    f"{self._snapshot.as_of.as_datetime().date()} after embargo"
+                )
+            values: dict[str, float] | None = None
             sector_labels: dict[str, str] = {}
             base_values: dict[str, float] | None = None
 
-            for spec in definition.inputs:
+            for index, spec in enumerate(definition.inputs):
                 numeric, labels = self._read_input(spec, as_of)
-                columns.append(numeric)
                 sector_labels.update(labels)
-                if needs_base and spec.window:
+                if index == 0:
+                    values = numeric
+                elif numeric:
+                    raise ValueError(
+                        f"factor {definition.id!r}: multiple numeric inputs need an "
+                        "explicit combine operation"
+                    )
+                if index == 0 and needs_base and spec.window:
                     prior_as_of = _as_of_for(decision_day - _embargo_delta(spec.window))
                     base_values, _ = self._read_input(spec, prior_as_of)
 
-            numeric_sets = [set(c) for c in columns]
-            if not numeric_sets:
+            if values is None:
                 exposures[t] = {}
                 coverage[t] = 0
                 continue
-            entities = set.intersection(*numeric_sets)
-            if not entities:
+            if not values:
                 # Nothing knowable at this date: an honest EMPTY cross-section,
                 # never a stale or partially-filled one.
                 exposures[t] = {}
@@ -155,7 +189,7 @@ class FactorEngine:
                 continue
             # A Mapping, not a dict: transforms return new mappings and
             # nothing here mutates the cross-section in place.
-            xs: Mapping[str, float] = {sid: columns[0][sid] for sid in sorted(entities)}
+            xs: Mapping[str, float] = {sid: values[sid] for sid in sorted(values)}
 
             for step in definition.transform:
                 params: dict[str, Any] = dict(step.params)

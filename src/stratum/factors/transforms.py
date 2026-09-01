@@ -1,7 +1,7 @@
 """Standard PIT-safe cross-sectional transforms (spec §5.4).
 
-The registry accepts a single cross-section per call. Standard operation names
-are registered, but their bodies are not implemented.
+The registry accepts a single cross-section per call. Standard operations are
+implemented below.
 
 Ops are deterministic and seedable (spec §5.4); registration is the extension
 point for factor packs that ship Python transform plugins (spec §5.5).

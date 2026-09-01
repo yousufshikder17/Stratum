@@ -51,6 +51,7 @@ class FactorInput:
 
     signal: str | None = None  # e.g. "social.attention"
     market: str | None = None  # e.g. "market.bar"
+    series_id: str | None = None  # e.g. "Assets|USD||2025-12-31"
     field: str | None = None
     window: str | None = None  # e.g. "5d"
     #: Coverage floor (spec §5.4): thin observations are excluded or
@@ -62,6 +63,8 @@ class FactorInput:
             raise InvalidFactorDefinition(
                 "each input must name exactly one of 'signal' or 'market'"
             )
+        if self.min_coverage is not None and self.min_coverage <= 0:
+            raise InvalidFactorDefinition("input min_coverage must be positive")
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -120,6 +123,7 @@ def _parse(data: Mapping[str, Any], *, origin: str) -> FactorDefinition:
             FactorInput(
                 signal=item.get("signal"),
                 market=item.get("market"),
+                series_id=item.get("series_id"),
                 field=item.get("field"),
                 window=item.get("window"),
                 min_coverage=item.get("min_coverage"),

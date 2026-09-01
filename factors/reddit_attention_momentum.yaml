@@ -1,11 +1,12 @@
 # Example workspace factor. Research hypothesis only — not a return claim.
 factor:
   id: reddit_attention_momentum
-  version: 0.2.0
+  version: 0.3.0
   family: sentiment          # momentum | value | quality | sentiment | custom
   description: >
     Cross-sectional rank of 5d change in Reddit mention velocity,
-    neutralized by sector. Research hypothesis only — not a return claim.
+    standardized within each rebalance cross-section. Research hypothesis
+    only — not a return claim.
   baseline: price_momentum_12_1
 
 inputs:
@@ -13,7 +14,6 @@ inputs:
     field: velocity
     window: 5d
     min_coverage: 50          # require >=50 mentions/day to count
-  - market: market.bar        # for universe & neutralization
 
 pit:
   as_of_rule: knowledge_time   # selection axis (enforced; only legal value)
@@ -24,7 +24,6 @@ transform:
     window: 5d
   - op: winsorize
     limits: [0.01, 0.99]
-  - op: sector_neutralize
   - op: cross_sectional_rank
   - op: zscore
 

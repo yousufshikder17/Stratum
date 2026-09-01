@@ -1,0 +1,29 @@
+# Runnable reference over the bundled market CSV example.
+factor:
+  id: price_momentum_5d
+  version: 0.1.0
+  family: momentum
+  description: >
+    Cross-sectional standardized five-day price change. Research hypothesis
+    only — not a return claim.
+
+inputs:
+  - market: market.bar
+    field: close
+    window: 5d
+
+pit:
+  as_of_rule: knowledge_time
+  embargo: 1d
+
+transform:
+  - op: pct_change
+  - op: winsorize
+    limits: [0.01, 0.99]
+  - op: cross_sectional_rank
+  - op: zscore
+
+evaluation:
+  rebalance: weekly
+  horizon: [1d, 5d, 21d]
+  metrics: [ic, rank_ic, turnover, decay, coverage]
