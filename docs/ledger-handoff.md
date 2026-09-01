@@ -90,9 +90,16 @@ stamp surfaces it — so a run mixing Ledger market data with Stratum signals is
 pinned end to end. Reading a snapshot with `expected_snapshot_id` set to a
 different hash is refused rather than warned about.
 
-## What is not wired yet
+## Automated local contract check
 
-There is no automated cross-repository test. It would need both checkouts in
-one CI job, and neither repository currently assumes the other is present —
-`uv sync` in either one succeeds alone, deliberately. Until that changes, the
-manual check above is the verification.
+With both repositories checked out as siblings, run:
+
+```bash
+pytest tests/integration/test_ledger_handoff.py
+```
+
+The test creates a real current-schema Stratum snapshot and makes Ledger's
+adapter consume it, checking the pinned hash and both clocks. Set
+`LEDGER_REPO` when Ledger is not in the sibling directory. The test skips when
+Ledger is absent, so either repository remains independently installable; a
+hosted cross-repository CI job still needs the repository URL and access policy.

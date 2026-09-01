@@ -5,13 +5,14 @@
 Stratum provides typed bitemporal observation models, adapter contracts and
 manifests, a guarded ingestion path into an append-only point-in-time store,
 survivorship-correct universe handling, point-in-time entity resolution,
-content-addressed snapshots, and declarative factor construction. Backtesting
-is the remaining major piece.
+content-addressed snapshots, and declarative factor construction. Simulation
+and return-linked evaluation are delegated to the sibling Ledger project.
 
 > **Scope disclaimer (binding, not boilerplate):** Stratum is *research
 > infrastructure*, not a prediction or trading product. It is intended to help
-> researchers construct point-in-time-correct datasets, define factors, and backtest them
-> with explicit bias controls. It does **not** claim, imply, or measure
+> researchers construct point-in-time-correct datasets, define factors, and
+> hand them to Ledger for evaluation with explicit bias controls. It does
+> **not** claim, imply, or measure
 > "alpha generation," and no component, doc, or marketing surface may.
 > Outputs are hypotheses and diagnostics, not investment advice. This
 > disclaimer is a design constraint that shapes the schema, the engine, and
@@ -24,9 +25,10 @@ under an `as_of` scope, ask what an index contained on a given date, and
 materialize a content-addressed snapshot — all offline, all covered by tests.
 
 What is **not** implemented: the Reddit and Google Trends network source
-adapters, the backtest engine and leakage suite, the Parquet
-panel exporter, and snapshot upload. `stratum backtest` and `stratum report`
-exit with a scaffold message rather than a plausible-looking number.
+adapters and snapshot upload. The local snapshot already provides a Parquet
+handoff. `stratum backtest` and
+`stratum report` remain explicit boundary markers because simulation and
+return-linked diagnostics belong in Ledger.
 
 ## The architectural waist
 
@@ -123,7 +125,6 @@ src/stratum/
 │   ├── reddit_sentiment/   # scaffold: social.sentiment / social.attention
 │   ├── sec_edgar/          # submissions + Company Facts, acceptance-time PIT
 │   ├── google_trends/      # scaffold: provider-vintage semantics
-│   └── parquet_panel/      # scaffold: as_of-stamped Parquet panels
 ├── guard/           # leakage checks + the guarded write path
 ├── store/           # SignalStore interface, DuckDB store, snapshot reader,
 │                    #   aggregate-only inspection
@@ -158,6 +159,9 @@ a ticker is later reused by an unrelated issuer.
 uv run stratum ingest   --config examples/research.toml --backfill
 uv run stratum store    --config examples/research.toml
 uv run stratum snapshot --config examples/research.toml --as-of 2024-03-01T00:00:00Z
+uv run stratum factor factors/price_momentum_5d.yaml \
+  --snapshot examples/data/snapshots/2024-03-01T000000Z \
+  --dates 2024-02-29 --out examples/data/price_momentum_5d.json
 ```
 
 ```
@@ -230,9 +234,9 @@ write signature accepts only the guard's proof type, no read exists without an
 adapter output type has a required `knowledge_time`. A change that opens a
 leakage or survivorship path is, by construction, a change that fails it.
 
-Not covered by CI: backtest behavior (unimplemented) and Ledger integration,
-which needs both repositories checked out — see
-[docs/ledger-handoff.md](docs/ledger-handoff.md).
+Hosted CI does not check Ledger integration because it checks out only this
+repository. When both repositories are local, the integration test runs
+automatically; see [docs/ledger-handoff.md](docs/ledger-handoff.md).
 
 ## What Stratum deliberately does not do
 

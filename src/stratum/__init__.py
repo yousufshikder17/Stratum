@@ -1,7 +1,8 @@
 """Stratum — point-in-time-correct alt-data research infrastructure.
 
-Pre-alpha research tooling, not a prediction or trading product. Operational
-storage, ingestion, factor computation, and backtesting are not implemented.
+Research tooling, not a prediction or trading product. Storage, guarded
+ingestion, snapshots, and point-in-time factor computation are operational;
+simulation belongs to the sibling Ledger project.
 """
 
 from stratum.schema import (
