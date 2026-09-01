@@ -23,8 +23,8 @@ resolve entities as of the moment each value became knowable, query the store
 under an `as_of` scope, ask what an index contained on a given date, and
 materialize a content-addressed snapshot — all offline, all covered by tests.
 
-What is **not** implemented: the three network source adapters (Reddit, SEC
-EDGAR, Google Trends), the backtest engine and leakage suite, the Parquet
+What is **not** implemented: the Reddit and Google Trends network source
+adapters, the backtest engine and leakage suite, the Parquet
 panel exporter, and snapshot upload. `stratum backtest` and `stratum report`
 exit with a scaffold message rather than a plausible-looking number.
 
@@ -45,8 +45,10 @@ static type annotations:
 `EventTime` and `KnowledgeTime` are distinct, frozen, non-interchangeable
 types: comparing one against the other raises `TypeError`, and an
 `Observation` cannot be constructed without an explicit `knowledge_time`.
-Every store read requires an `as_of` and returns, per key, the latest vintage
-with `knowledge_time <= as_of`. There is no overload without it.
+Every store read requires an `as_of` and returns, per
+`(entity, signal_type, series_id, event_time)` key, the latest vintage with
+`knowledge_time <= as_of`. `series_id` keeps independent values such as Assets
+and Revenues from collapsing when they share a reporting date.
 
 ## The leakage guard
 
@@ -119,7 +121,7 @@ src/stratum/
 │   ├── universe_csv/       # effective-dated index membership
 │   ├── cost_default/       # commission/spread/sqrt-impact cost model
 │   ├── reddit_sentiment/   # scaffold: social.sentiment / social.attention
-│   ├── sec_edgar/          # scaffold: publication/restatement semantics
+│   ├── sec_edgar/          # submissions + Company Facts, acceptance-time PIT
 │   ├── google_trends/      # scaffold: provider-vintage semantics
 │   └── parquet_panel/      # scaffold: as_of-stamped Parquet panels
 ├── guard/           # leakage checks + the guarded write path
@@ -185,10 +187,23 @@ uv run stratum universe --config examples/research.toml     --universe sp1500_pi
 uv run stratum universe --config examples/research.toml     --universe sp1500_pit --as-of 2024-01-26     # AAA, ZZZ
 ```
 
+For live public SEC data, edit the identifying contact in
+`examples/sec_edgar.toml`, then run:
+
+```bash
+uv run stratum ingest --config examples/sec_edgar.toml --backfill
+uv run stratum store  --config examples/sec_edgar.toml
+```
+
+The example uses a bounded CIK allowlist, EDGAR acceptance timestamps as
+knowledge time, accession-number vintages and amendment links, and normalized
+Company Facts concepts. It does not crawl the full SEC universe; use the SEC
+bulk archives for that workload.
+
 There is no supported PyPI installation command for this project. The
 distribution name `stratum` is already used on PyPI; a publication name has
-not been selected. Source-specific SDK declarations are optional extras, but
-their adapters are currently scaffolds.
+not been selected. Source-specific SDK declarations are optional extras. SEC
+EDGAR uses the core `httpx` dependency; Reddit and Trends remain scaffolds.
 
 ## Extending
 

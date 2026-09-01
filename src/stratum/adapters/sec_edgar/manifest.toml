@@ -1,4 +1,4 @@
-# Manifest for the unimplemented SEC EDGAR adapter scaffold.
+# Manifest for the SEC EDGAR submissions and Company Facts adapter.
 [adapter]
 id             = "sec_edgar"
 family         = "source"

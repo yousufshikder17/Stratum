@@ -1,0 +1,30 @@
+# Live public-data example. Replace the contact address before running; the SEC
+# requires automated clients to identify themselves. No API key is required.
+
+[run]
+id = "sec-edgar-example"
+
+[store]
+path = "data/sec_edgar.duckdb"
+
+[resolver]
+tables = "data/sec_entities.csv"
+version = "sec-example-v1"
+
+[backfill]
+start = "2023-01-01"
+end = "2025-01-01"
+
+[rate_limits.sec_edgar]
+requests_per_second = 8.0
+burst = 8
+
+[[adapters]]
+id = "sec_edgar"
+entity_kind = "cik"
+
+  [adapters.config]
+  user_agent = "Stratum local-research replace-with-your-email@example.com"
+  ciks = ["0000320193"]
+  forms = ["10-K", "10-Q", "8-K"]
+  concepts = ["Assets", "Liabilities", "Revenues", "NetIncomeLoss", "StockholdersEquity"]

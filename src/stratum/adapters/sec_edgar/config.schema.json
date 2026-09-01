@@ -15,10 +15,23 @@
     },
     "ciks": {
       "type": "array",
+      "minItems": 1,
       "items": { "type": "string" },
-      "description": "Optional CIK allowlist; omit for full coverage."
+      "description": "Required CIK allowlist. Use SEC bulk archives for full-market coverage."
+    },
+    "concepts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" },
+      "default": ["Assets", "Liabilities", "Revenues", "NetIncomeLoss", "StockholdersEquity"],
+      "description": "XBRL concepts to ingest from Company Facts."
+    },
+    "timeout_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 30
     }
   },
-  "required": ["user_agent"],
+  "required": ["user_agent", "ciks"],
   "additionalProperties": false
 }

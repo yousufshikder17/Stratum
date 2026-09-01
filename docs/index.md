@@ -4,8 +4,9 @@ Pre-alpha research tooling for a common **point-in-time signal schema**,
 adapter contracts, leakage validation, and declarative factors. Guarded
 ingestion, the bitemporal store, entity resolution, survivorship-correct
 universes, factor construction, and content-addressed snapshots work today.
-The backtest engine, the leakage suite, and the three network source adapters
-are still scaffolds.
+The backtest engine, leakage suite, Reddit adapter, and Google Trends adapter
+are still scaffolds. SEC EDGAR submissions and Company Facts ingestion is
+implemented with acceptance-time point-in-time semantics.
 
 !!! warning "Scope (binding, not boilerplate)"
     Stratum is *research infrastructure*, not a prediction or trading

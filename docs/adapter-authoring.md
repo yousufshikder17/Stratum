@@ -1,8 +1,7 @@
 # Authoring an adapter
 
-This guide describes the adapter contract. Bundled source adapters are
-currently scaffolds, so use it as an interface reference rather than evidence
-of a working ingestion pipeline.
+This guide describes the adapter contract. The bundled CSV and SEC EDGAR
+adapters are working references; Reddit and Google Trends remain scaffolds.
 
 ## What an adapter is
 
@@ -41,8 +40,10 @@ stamps is how alt-data backtests lie.
 
 ## Restatements
 
-New information about an existing `(entity, event_time)` is a **new vintage**
-with a later `knowledge_time`, never an overwrite. If your manifest declares
+New information about an existing `(entity, signal_type, series_id, event_time)`
+is a **new vintage** with a later `knowledge_time`, never an overwrite. Use a
+stable `series_id` when one signal type carries multiple independent series.
+If your manifest declares
 `supports_restatement = true`, every row must carry a `vintage_id`.
 
 ## Terms & data hygiene

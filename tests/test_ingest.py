@@ -14,6 +14,7 @@ import pytest
 
 pytest.importorskip("duckdb")
 
+from stratum.adapters.sec_edgar import SecEdgarError
 from stratum.config import ConfigError, ResearchConfig
 from stratum.guard.leakage import IngestMode, LeakageGuard
 from stratum.run.ingest import format_report, ingest
@@ -366,9 +367,8 @@ async def test_a_configured_budget_admits_the_network_adapter(tmp_path: Path) ->
     )
     config = ResearchConfig.load(path)
     assert config.rate_limits["sec_edgar"].requests_per_second == 8.0
-    # sec_edgar is still a scaffold, so it refuses at configure() — the point
-    # is that it got past the rate-limit gate to do so.
-    with pytest.raises(NotImplementedError):
+    # Provider configuration is reached only after the shared rate-limit gate.
+    with pytest.raises(SecEdgarError, match="user_agent"):
         await ingest(config, mode=IngestMode.BACKFILL, only="sec_edgar", clock=lambda: NOW)
 
 
